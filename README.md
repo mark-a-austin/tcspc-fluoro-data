@@ -71,7 +71,7 @@ When running the data generation script I recommend using [tmux](https://github.
 
 If using tmux, you can create a new tmux session with:
 ```sh
-tmux new -s fluoro-data-sim
+tmux
 ```
 
 Then you can run the data generation script with:
@@ -88,7 +88,7 @@ ctrl+b d
 
 And you can reattach to the tmux session with:
 ```sh
-tmux attach -t fluoro-data-sim
+tmux a
 ```
 
 #### Screen

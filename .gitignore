@@ -1,6 +1,8 @@
 .autoenv
 .autoenvleave
+.autoenv_leave
 .vscode
+data/
 data/synthetic-data/*
 data/emission_distributions/*
 __pycache__/

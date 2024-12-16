@@ -3,6 +3,7 @@ import numpy as np
 import scipy.interpolate as interp
 from PIL import Image
 from Intensity_PDF import Wavebounds
+from probe_config import CHANNEL_RANGE, NUM_CHANNELS, NUM_BINS
 
 # original red pde range = (0, 7)
 # original blue pde range = (0, 17.5)
@@ -66,6 +67,21 @@ class SpectralSensitivity:
             *self.blue_spad_range,
             1000,
         )
+
+    def get_pde_matrix(self, use_red: bool = True, verbose: bool = False) -> np.ndarray:
+        sensor_range = np.linspace(*CHANNEL_RANGE, NUM_CHANNELS)
+        if use_red:
+            sensors_sensitivity = np.array(
+                [self.red_spad_sensitivity(i) for i in sensor_range]
+            )
+        else:
+            sensors_sensitivity = np.array(
+                [self.blue_spad_sensitivity(i) for i in sensor_range]
+            )
+        sensitivity_matrix = sensors_sensitivity.repeat(NUM_BINS).reshape(
+            NUM_CHANNELS, NUM_BINS
+        )
+        return sensitivity_matrix
 
     def extract_image_from_border(
         self, image, border_color: tuple[int, int, int], threshold: int = 10

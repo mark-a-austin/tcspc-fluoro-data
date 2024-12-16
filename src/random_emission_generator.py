@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-from scipy.interpolate import make_interp_spline
+from scipy.interpolate import make_interp_spline, BSpline
 from scipy.integrate import quad
 from Intensity_PDF import Wavebounds
 from probe_config import CHANNEL_RANGE, CHANNEL_WIDTH
@@ -62,10 +62,14 @@ class Emission_Generator:
         max_wavelength = min_wavelength + np.random.uniform(100, 200)
 
         # Ensure that the max wavelength is within the bounds
-        max_wavelength = min(max_wavelength, (bounds[1] - CHANNEL_WIDTH))
+        max_wavelength = min(max_wavelength, (bounds[1] - 1.5 * CHANNEL_WIDTH))
         max_wavelength = np.round(max_wavelength, 2)
 
         self.emission_bounds = Wavebounds(min_wavelength, max_wavelength)
+        self.norm_emission_bounds = (
+            np.array([min_wavelength, max_wavelength]) - bounds[0]
+        ) / (bounds[1] - bounds[0])
+        self.norm_emission_bounds = Wavebounds(*self.norm_emission_bounds)
 
         # Generate the evenly spaced knots
         homogenous_points = np.linspace(min_wavelength, max_wavelength, num_knots)
@@ -75,9 +79,9 @@ class Emission_Generator:
 
         # Generate the B-Spline
         self.spline = make_interp_spline(homogenous_points, y_locations, k=degree)
-        scale_factor = quad(self.spline, min_wavelength, max_wavelength)[0]
-        y_locations = y_locations / scale_factor
-        self.spline = make_interp_spline(homogenous_points, y_locations, k=degree)
+        # scale_factor = quad(self.spline, min_wavelength, max_wavelength)[0]
+        # y_locations = y_locations / scale_factor
+        # self.spline = make_interp_spline(homogenous_points, y_locations, k=degree)
 
         self.t = self.spline.t
         self.c = self.spline.c
@@ -97,6 +101,102 @@ class Emission_Generator:
         self.norm_ys = self.norm_spline(self.norm_xs)
 
         if verbose:
+            print(f"Bounds: {self.emission_bounds}")
+            print(f"Normalised Bounds: {self.norm_emission_bounds}")
+
+            x = np.linspace(min_wavelength, max_wavelength, 1000)
+            norm_x = np.linspace(0, 1, 1000)
+            y = self.spline(x)
+            norm_y = self.norm_spline(norm_x)
+
+            fig, axs = plt.subplots(2, figsize=(10, 10))
+            fig.suptitle("Random Emission Distribution")
+            axs[0].plot(x, y, label="Spline")
+            axs[0].set_title("Unnormalised Distribution of random emission")
+            axs[0].set_xlabel("Wavelength (nm)")
+            axs[0].set_ylabel("Intensity (a.u.)")
+            axs[0].legend()
+
+            axs[1].plot(norm_x, norm_y, label="Normalised Spline")
+            axs[1].set_title("Normalised Distribution of random emission")
+            axs[1].set_xlabel("Normalised Wavelength")
+            axs[1].set_ylabel("Intensity (a.u.)")
+            axs[1].legend()
+
+            plt.show()
+
+        return (
+            self.t,
+            self.c,
+            self.xs,
+            self.ys,
+            self.norm_t,
+            self.norm_c,
+            self.norm_xs,
+            self.norm_ys,
+        )
+
+    def generate_random_quadtraic_emission(
+        self,
+        verbose: bool = False,
+        num_knots: int = 6,
+        num_points_sampled: int = 10,
+        bounds: Tuple[float, float] = None,
+    ):
+        if bounds is None:
+            bounds = self.bounds
+
+        # Randomly sample bounds to generate the bounds of the spline ensuring that the start < end
+        min_wavelength = np.random.uniform(*bounds)
+        min_wavelength = np.round(min_wavelength, 2)
+        max_wavelength = min_wavelength + np.random.uniform(100, 200)
+
+        max_wavelength = min(max_wavelength, (bounds[1] - 1.5 * CHANNEL_WIDTH))
+        max_wavelength = np.round(max_wavelength, 2)
+
+        self.emission_bounds = Wavebounds(min_wavelength, max_wavelength)
+
+        # Generate the evenly spaced knots
+        homogenous_points = np.linspace(min_wavelength, max_wavelength, num_knots)
+        norm_homogenous_points = np.linspace(0, 1, num_knots)
+        noise = np.random.normal(0, 0.01, num_knots)
+        norm_center_point = len(norm_homogenous_points) // 2 + np.random.randint(-2, 2)
+        a = 20
+        k = 10 + np.random.randint(-5, 5)
+        y_locations = (
+            a
+            * np.exp(
+                -k
+                * (norm_homogenous_points - norm_homogenous_points[norm_center_point])
+                ** 2
+            )
+            + noise
+        )
+        y_locations = y_locations / np.sum(y_locations)
+
+        # Generate the B-Spline
+        self.spline = make_interp_spline(homogenous_points, y_locations, k=3)
+        self.t = self.spline.t
+        self.c = self.spline.c
+
+        self.xs = np.linspace(min_wavelength, max_wavelength, num_points_sampled)
+        self.ys = self.spline(self.xs)
+
+        # Generate the normalised B-Spline equivalent
+        self.norm_spline = make_interp_spline(norm_homogenous_points, y_locations, k=3)
+
+        self.norm_t = self.norm_spline.t
+        self.norm_c = self.norm_spline.c
+
+        self.norm_xs = np.linspace(0, 1, num_points_sampled)
+        self.norm_ys = self.norm_spline(self.norm_xs)
+
+        if verbose:
+            print(f"t: {self.t}")
+            print(f"c: {self.c}")
+
+            print(f"norm_t: {self.norm_t}")
+            print(f"norm_c: {self.norm_c}")
             x = np.linspace(min_wavelength, max_wavelength, 1000)
             norm_x = np.linspace(0, 1, 1000)
             y = self.spline(x)
@@ -137,6 +237,7 @@ class Emission_Generator:
         """
         return {
             "bounds": self.emission_bounds.to_list(),
+            "norm_bounds": self.norm_emission_bounds.to_list(),
             "t": self.t.tolist(),
             "c": self.c.tolist(),
             "xs": self.xs.tolist(),
@@ -162,6 +263,7 @@ class Emission_Generator:
         """
         data = np.load(file_path)
         self.emission_bounds = Wavebounds(*data["bounds"])
+        self.norm_emission_bounds = Wavebounds(*data["norm_bounds"])
         self.t = data["t"]
         self.c = data["c"]
         self.xs = data["xs"]
@@ -171,7 +273,12 @@ class Emission_Generator:
         self.norm_xs = data["norm_xs"]
         self.norm_ys = data["norm_ys"]
 
+        self.spline = BSpline(self.t, self.c, 3)
+        self.norm_spline = BSpline(self.norm_t, self.norm_c, 3)
+
     def plot_emission(self):
+        print(f"Bounds: {self.emission_bounds}")
+        print(f"Normalised Bounds: {self.norm_emission_bounds}")
         plt_xs = np.linspace(*self.emission_bounds, 1000)
         plt_norm_xs = np.linspace(0, 1, 1000)
 
@@ -204,4 +311,5 @@ if __name__ == "__main__":
     emission_generator.load_emission_metadata(
         "../data/emission_distributions/test_emission.npz"
     )
+    emission_generator.plot_emission()
     assert temp == emission_generator.get_emission_metadata()
